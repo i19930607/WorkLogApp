@@ -23,56 +23,106 @@ def save_data(data):
 if "db" not in st.session_state:
     st.session_state.db = load_data()
 
+# 編輯狀態追蹤
+if "edit_idx" not in st.session_state:
+    st.session_state.edit_idx = -1
+
 st.title("📝 工作日誌 (隨到隨記版)")
 
-# --- 頂部：基本資料設定 ---
-st.subheader("表單基本資料")
-col_top1, col_top2, col_top3 = st.columns(3)
-with col_top1:
+# --- 頂部：基本資料設定 (拆分日期與業務) ---
+st.subheader("📅 日期設定")
+col_d1, col_d2, col_d3 = st.columns(3)
+with col_d1:
     st.session_state.db["year"] = st.number_input("年度", min_value=110, max_value=150, value=st.session_state.db["year"])
+with col_d2:
     st.session_state.db["month"] = st.number_input("月", min_value=1, max_value=12, value=st.session_state.db["month"])
+with col_d3:
     st.session_state.db["day"] = st.number_input("日", min_value=1, max_value=31, value=st.session_state.db["day"])
-with col_top2:
-    st.session_state.db["co_sales"] = st.text_input("同行業務", value=st.session_state.db.get("co_sales", ""))
-with col_top3:
+
+st.subheader("🧑‍💼 業務人員設定")
+col_s1, col_s2 = st.columns(2)
+with col_s1:
     st.session_state.db["sales"] = st.text_input("業務", value=st.session_state.db.get("sales", "李郡"))
+with col_s2:
+    st.session_state.db["co_sales"] = st.text_input("同行業務", value=st.session_state.db.get("co_sales", ""))
 
 save_data(st.session_state.db)
-
 st.divider()
 
-# --- 中間：新增單筆紀錄 ---
-st.subheader("➕ 新增一筆拜訪 (目前累積: {}/10)".format(len(st.session_state.db["records"])))
+# --- 中間：新增或編輯單筆紀錄 ---
+default_items = ["古道", "台鹽", "南聯", "海尼根", "麒麟", "一口香", "清露", "台鹽水", "紅牛", "老菜脯", "好勁道", "圍爐瓦斯罐"]
 
-if len(st.session_state.db["records"]) >= 10:
-    st.warning("今天已經填滿 10 筆紀錄囉！請先輸出 PDF。")
-else:
+if st.session_state.edit_idx >= 0:
+    # ====== 編輯模式 ======
+    idx = st.session_state.edit_idx
+    rec = st.session_state.db["records"][idx]
+    st.subheader(f"✏️ 編輯第 {idx+1} 筆拜訪")
+    
     with st.container():
         col1, col2 = st.columns(2)
         with col1:
-            customer = st.text_input("客戶名稱", key="new_c")
+            customer = st.text_input("客戶名稱", value=rec.get("customer", ""), key="edit_c")
         with col2:
-            visit_time = st.text_input("拜訪時間 (例如: 1500)", key="new_t")
+            visit_time = st.text_input("拜訪時間 (例如: 1500)", value=rec.get("time", ""), key="edit_t")
             
-        default_items = ["古道", "台鹽", "南聯", "海尼根", "麒麟", "一口香", "清露", "台鹽水", "紅牛", "老菜脯", "好勁道", "圍爐瓦斯罐"]
-        items = st.multiselect("經銷品項", options=default_items, key="new_i")
-        extra_items = st.text_input("其他品項 (用逗號分隔)", key="new_ei")
-        purposes = st.multiselect("拜訪目的", ["抄貨", "收款", "開發", "其他"], key="new_p")
-        notes = st.text_area("重點紀錄", key="new_n")
+        safe_items = [x for x in rec.get("items", []) if x in default_items]
+        items = st.multiselect("經銷品項", options=default_items, default=safe_items, key="edit_i")
+        extra_items = st.text_input("其他品項 (用逗號分隔)", value=rec.get("extra_items", ""), key="edit_ei")
+        safe_purposes = [x for x in rec.get("purposes", []) if x in ["抄貨", "收款", "開發", "其他"]]
+        purposes = st.multiselect("拜訪目的", ["抄貨", "收款", "開發", "其他"], default=safe_purposes, key="edit_p")
+        notes = st.text_area("重點紀錄", value=rec.get("notes", ""), key="edit_n")
         
-        if st.button("💾 儲存這筆紀錄", type="primary"):
-            if not customer:
-                st.error("請至少填寫客戶名稱！")
-            else:
-                new_record = {
-                    "customer": customer, "time": visit_time,
-                    "items": items, "extra_items": extra_items, 
-                    "purposes": purposes, "notes": notes
-                }
-                st.session_state.db["records"].append(new_record)
-                save_data(st.session_state.db)
-                st.success(f"已儲存 {customer} 的紀錄！請重新整理網頁繼續填下一筆。")
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+            if st.button("💾 儲存修改", type="primary", use_container_width=True):
+                if not customer:
+                    st.error("請至少填寫客戶名稱！")
+                else:
+                    st.session_state.db["records"][idx] = {
+                        "customer": customer, "time": visit_time,
+                        "items": items, "extra_items": extra_items, 
+                        "purposes": purposes, "notes": notes
+                    }
+                    save_data(st.session_state.db)
+                    st.session_state.edit_idx = -1
+                    st.rerun()
+        with col_btn2:
+            if st.button("❌ 取消編輯", use_container_width=True):
+                st.session_state.edit_idx = -1
                 st.rerun()
+
+else:
+    # ====== 新增模式 ======
+    st.subheader("➕ 新增一筆拜訪 (目前累積: {}/10)".format(len(st.session_state.db["records"])))
+
+    if len(st.session_state.db["records"]) >= 10:
+        st.warning("今天已經填滿 10 筆紀錄囉！請先輸出 PDF。")
+    else:
+        with st.container():
+            col1, col2 = st.columns(2)
+            with col1:
+                customer = st.text_input("客戶名稱", key="new_c")
+            with col2:
+                visit_time = st.text_input("拜訪時間 (例如: 1500)", key="new_t")
+                
+            items = st.multiselect("經銷品項", options=default_items, key="new_i")
+            extra_items = st.text_input("其他品項 (用逗號分隔)", key="new_ei")
+            purposes = st.multiselect("拜訪目的", ["抄貨", "收款", "開發", "其他"], key="new_p")
+            notes = st.text_area("重點紀錄", key="new_n")
+            
+            if st.button("💾 儲存這筆紀錄", type="primary"):
+                if not customer:
+                    st.error("請至少填寫客戶名稱！")
+                else:
+                    new_record = {
+                        "customer": customer, "time": visit_time,
+                        "items": items, "extra_items": extra_items, 
+                        "purposes": purposes, "notes": notes
+                    }
+                    st.session_state.db["records"].append(new_record)
+                    save_data(st.session_state.db)
+                    st.success(f"已儲存 {customer} 的紀錄！請重新整理網頁繼續填下一筆。")
+                    st.rerun()
 
 st.divider()
 
@@ -82,14 +132,30 @@ if not st.session_state.db["records"]:
     st.info("目前還沒有任何紀錄。")
 else:
     for idx, r in enumerate(st.session_state.db["records"]):
-        st.write(f"{idx+1}. **{r['customer']}** ({r['time']}) - 目的: {','.join(r['purposes'])}")
+        col_txt, col_edit, col_del = st.columns([7, 1, 1])
+        with col_txt:
+            st.write(f"**{idx+1}. {r['customer']}** ({r['time']}) - 目的: {','.join(r['purposes'])}")
+        with col_edit:
+            if st.button("✏️", key=f"edit_btn_{idx}"):
+                st.session_state.edit_idx = idx
+                st.rerun()
+        with col_del:
+            if st.button("🗑️", key=f"del_btn_{idx}"):
+                st.session_state.db["records"].pop(idx)
+                save_data(st.session_state.db)
+                # 如果刪除的剛好是正在編輯的，或者是正在編輯的上一筆，調整 edit_idx
+                if st.session_state.edit_idx == idx:
+                    st.session_state.edit_idx = -1
+                elif st.session_state.edit_idx > idx:
+                    st.session_state.edit_idx -= 1
+                st.rerun()
 
-    col_btn1, col_btn2 = st.columns(2)
-    with col_btn2:
-        if st.button("🗑️ 清空今天所有紀錄"):
-            st.session_state.db["records"] = []
-            save_data(st.session_state.db)
-            st.rerun()
+    st.write("") # 空一行
+    if st.button("🗑️ 清空今天所有紀錄"):
+        st.session_state.db["records"] = []
+        st.session_state.edit_idx = -1
+        save_data(st.session_state.db)
+        st.rerun()
 
     def draw_centered_text(draw_obj, text, center_x, y, font, text_color):
         """只對月、日、打勾使用 X 軸置中，Y軸絕對不加料"""
@@ -98,12 +164,15 @@ else:
         text_width = bbox[2] - bbox[0]
         draw_obj.text((center_x - text_width / 2, y), text, font=font, fill=text_color)
 
+    st.write("")
     # --- 產生 PDF ---
     if st.button("🖨️ 產生 PDF 日誌表"):
         try:
             img = Image.open("blank_form.jpg")
             draw = ImageDraw.Draw(img)
-            font_path = "msjh.ttc"
+            
+            # 雲端部署專用設定：確保同資料夾內有 msjh.ttc
+            font_path = "msjh.ttc"  
             
             # 字體設定保持不變
             font_m = ImageFont.truetype(font_path, 16) 
@@ -111,7 +180,7 @@ else:
             font_v = ImageFont.truetype(font_path, 18) 
             text_color = (0, 0, 0)
 
-            # 基本資料 (Y 座標從 27 往上提 10 像素變成 17)
+            # 基本資料 (套用你指定的座標)
             draw.text((596, 17), st.session_state.db["co_sales"], font=font_m, fill=text_color)
             draw.text((836, 17), st.session_state.db["sales"], font=font_m, fill=text_color)
             
